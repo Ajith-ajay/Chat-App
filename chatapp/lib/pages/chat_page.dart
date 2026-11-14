@@ -1,3 +1,4 @@
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:chatapp/services/chat/chat_service.dart';
@@ -24,15 +25,18 @@ class _ChatPageState extends State<ChatPage>
   final ChatService _chatService = ChatService();
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
   final ScrollController _scrollController = ScrollController();
+  final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
 
+  bool _isReceiverOnline = false;
+  String _lastSeen = '';
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-
   bool _isTyping = false;
 
   @override
   void initState() {
     super.initState();
+    _listenToUserStatus();
 
     _animationController = AnimationController(
       vsync: this,
@@ -45,6 +49,38 @@ class _ChatPageState extends State<ChatPage>
     );
 
     _animationController.forward();
+  }
+
+  void _listenToUserStatus() {
+    _dbRef.child("status").child(widget.receiverUserID).onValue.listen((event) {
+      if (event.snapshot.value != null) {
+        final data = Map<String, dynamic>.from(event.snapshot.value as Map);
+        setState(() {
+          _isReceiverOnline = data['online'] ?? false;
+          if (!_isReceiverOnline && data['last_seen'] != null) {
+            print('Ajith is good');
+            final lastSeen =
+                DateTime.fromMillisecondsSinceEpoch(data['last_seen'] as int);
+            _lastSeen = _formatLastSeen(lastSeen);
+          }
+        });
+      }
+    });
+  }
+
+  String _formatLastSeen(DateTime lastSeen) {
+    final now = DateTime.now();
+    final difference = now.difference(lastSeen);
+
+    if (difference.inMinutes < 1) {
+      return 'Just now';
+    } else if (difference.inHours < 1) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    } else {
+      return '${difference.inDays}d ago';
+    }
   }
 
   @override
@@ -173,7 +209,19 @@ class _ChatPageState extends State<ChatPage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.receiverUserEmail),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.receiverUserEmail),
+            Text(
+              _isReceiverOnline ? 'Online' : 'Last seen $_lastSeen',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white70,
+              ),
+            ),
+          ],
+        ),
         backgroundColor: Colors.deepPurple,
       ),
       body: Container(
